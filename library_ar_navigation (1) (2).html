@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LibNav AR — 도서관 AR 길 찾기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0a0e17;
+  --surface: #111827;
+  --surface2: #1a2335;
+  --border: rgba(99,179,237,0.15);
+  --accent: #3b82f6;
+  --accent2: #06b6d4;
+  --text: #e2e8f0;
+  --muted: #64748b;
+  --glow: rgba(59,130,246,0.4);
+}
+body { font-family:'IBM Plex Sans KR',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; overflow-x:hidden; }
+
+.header { padding:16px 24px 12px; border-bottom:0.5px solid var(--border); display:flex; align-items:center; gap:12px; background:rgba(10,14,23,0.95); backdrop-filter:blur(8px); position:sticky; top:0; z-index:100; }
+.logo-dot { width:8px; height:8px; border-radius:50%; background:var(--accent); box-shadow:0 0 10px var(--glow); animation:pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.6;transform:scale(.85)} }
+.logo-text { font-size:13px; font-weight:500; letter-spacing:.08em; color:var(--accent2); text-transform:uppercase; }
+.badge { margin-left:auto; font-size:10px; font-family:'IBM Plex Mono',monospace; color:var(--muted); border:0.5px solid var(--border); padding:3px 8px; border-radius:4px; }
+
+.search-panel { padding:18px 24px; background:var(--surface); border-bottom:0.5px solid var(--border); }
+.search-label { font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-bottom:8px; }
+.search-row { display:flex; gap:8px; }
+.search-input { flex:1; background:var(--surface2); border:0.5px solid var(--border); border-radius:8px; padding:10px 14px; color:var(--text); font-family:'IBM Plex Sans KR',sans-serif; font-size:14px; outline:none; transition:border-color .2s,box-shadow .2s; }
+.search-input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(59,130,246,.12); }
+.search-input::placeholder { color:var(--muted); }
+.btn-search { background:var(--accent); border:none; border-radius:8px; padding:10px 20px; color:white; font-family:'IBM Plex Sans KR',sans-serif; font-size:13px; font-weight:500; cursor:pointer; transition:background .15s,transform .1s; white-space:nowrap; }
+.btn-search:hover { background:#2563eb; }
+.btn-search:active { transform:scale(.97); }
+.quick-books { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+.quick-tag { font-size:11px; color:var(--muted); border:0.5px solid var(--border); padding:4px 10px; border-radius:20px; cursor:pointer; transition:all .15s; background:transparent; font-family:'IBM Plex Sans KR',sans-serif; }
+.quick-tag:hover { color:var(--accent2); border-color:var(--accent2); background:rgba(6,182,212,.07); }
+
+.result-card { margin:12px 24px; background:var(--surface); border:0.5px solid var(--border); border-radius:10px; padding:14px 16px; display:none; animation:fadeSlide .3s ease; }
+.result-card.visible { display:block; }
+@keyframes fadeSlide { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+.result-header { display:flex; align-items:flex-start; gap:12px; }
+.result-icon { width:36px; height:36px; background:rgba(59,130,246,.12); border:0.5px solid rgba(59,130,246,.3); border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:16px; }
+.result-title { font-size:14px; font-weight:500; line-height:1.4; }
+.result-meta { font-size:12px; color:var(--muted); margin-top:2px; font-family:'IBM Plex Mono',monospace; }
+.result-tags { display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; }
+.tag { font-size:11px; padding:3px 8px; border-radius:4px; font-family:'IBM Plex Mono',monospace; }
+.tag-call { background:rgba(59,130,246,.15); color:#93c5fd; }
+.tag-floor { background:rgba(6,182,212,.12); color:#67e8f9; }
+.tag-shelf { background:rgba(34,197,94,.12); color:#86efac; }
+.tag-row { background:rgba(168,85,247,.12); color:#c4b5fd; }
+.nav-hint { margin-top:10px; font-size:12px; color:var(--accent2); display:flex; align-items:center; gap:6px; }
+.nav-hint::before { content:''; width:6px; height:6px; border-radius:50%; background:var(--accent2); display:inline-block; animation:pulse 1.5s ease-in-out infinite; }
+
+.map-container { padding:14px 24px 20px; }
+.map-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.map-title { font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+.canvas-wrap { border:0.5px solid var(--border); border-radius:12px; overflow:hidden; background:#0c1220; position:relative; }
+canvas { display:block; width:100%; height:auto; }
+.canvas-overlay { position:absolute; bottom:10px; right:10px; }
+.map-btn { width:28px; height:28px; background:rgba(17,24,39,.88); border:0.5px solid var(--border); border-radius:6px; color:var(--text); font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background .15s; }
+.map-btn:hover { background:rgba(59,130,246,.2); }
+.legend { margin-top:10px; display:flex; flex-wrap:wrap; gap:12px; }
+.legend-item { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--muted); }
+.legend-dot { width:10px; height:10px; border-radius:2px; }
+
+.step-guide { margin:0 24px 20px; display:none; }
+.step-guide.visible { display:block; }
+.step-title { font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-bottom:8px; }
+.steps { display:flex; flex-direction:column; gap:4px; }
+.step { display:flex; align-items:center; gap:10px; padding:8px 12px; background:var(--surface); border:0.5px solid var(--border); border-radius:7px; font-size:13px; animation:fadeSlide .3s ease both; }
+.step-num { width:20px; height:20px; border-radius:50%; background:rgba(59,130,246,.15); border:0.5px solid rgba(59,130,246,.35); color:var(--accent); font-size:10px; font-family:'IBM Plex Mono',monospace; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.step.highlight { border-color:rgba(59,130,246,.4); background:rgba(59,130,246,.07); }
+.step.highlight .step-num { background:var(--accent); color:white; }
+.not-found { margin:0 24px 16px; padding:14px 16px; background:rgba(239,68,68,.07); border:0.5px solid rgba(239,68,68,.25); border-radius:8px; font-size:13px; color:#fca5a5; display:none; }
+.not-found.visible { display:block; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo-dot"></div>
+  <div class="logo-text">LibNav AR</div>
+  <div class="badge">도서관 AR 길 찾기 · KDC</div>
+</div>
+
+<div class="search-panel">
+  <div class="search-label">책 제목 또는 청구번호 입력</div>
+  <div class="search-row">
+    <input class="search-input" id="searchInput" type="text" placeholder="예: 채식주의자  /  813.6-한강-채  /  총균쇠">
+    <button class="btn-search" onclick="doSearch()">길 찾기</button>
+  </div>
+  <div class="quick-books">
+    <button class="quick-tag" onclick="fillSearch('채식주의자')">채식주의자</button>
+    <button class="quick-tag" onclick="fillSearch('코스모스')">코스모스</button>
+    <button class="quick-tag" onclick="fillSearch('파친코')">파친코</button>
+    <button class="quick-tag" onclick="fillSearch('데미안')">데미안</button>
+    <button class="quick-tag" onclick="fillSearch('총균쇠')">총균쇠</button>
+    <button class="quick-tag" onclick="fillSearch('자본론')">자본론</button>
+    <button class="quick-tag" onclick="fillSearch('수학의 정석')">수학의 정석</button>
+    <button class="quick-tag" onclick="fillSearch('논어')">논어</button>
+  </div>
+</div>
+
+<div class="result-card" id="resultCard">
+  <div class="result-header">
+    <div class="result-icon">📖</div>
+    <div>
+      <div class="result-title" id="resultTitle">—</div>
+      <div class="result-meta" id="resultMeta">—</div>
+    </div>
+  </div>
+  <div class="result-tags">
+    <span class="tag tag-call" id="tagCall">—</span>
+    <span class="tag tag-floor" id="tagFloor">—</span>
+    <span class="tag tag-shelf" id="tagShelf">—</span>
+    <span class="tag tag-row" id="tagRow">—</span>
+  </div>
+  <div class="nav-hint">파란 경로를 따라 통로를 이동하세요</div>
+</div>
+<div class="not-found" id="notFound">검색 결과를 찾을 수 없습니다. 다른 제목이나 청구번호를 입력해보세요.</div>
+
+<div class="map-container">
+  <div class="map-header">
+    <div class="map-title">도서관 평면도 — 한국십진분류법(KDC) 10구역</div>
+  </div>
+  <div class="canvas-wrap">
+    <canvas id="mapCanvas"></canvas>
+    <div class="canvas-overlay">
+      <button class="map-btn" onclick="resetView()" title="초기화">⟳</button>
+    </div>
+  </div>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#2d3d56;border:0.5px solid rgba(99,179,237,0.3)"></div>서가</div>
+    <div class="legend-item"><div class="legend-dot" style="background:rgba(59,130,246,0.55);border:0.5px solid #3b82f6"></div>목표 서가</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#3b82f6;border-radius:50%"></div>AR 경로 (통로)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:rgba(168,85,247,0.8);border-radius:50%"></div>현재 위치</div>
+    <div class="legend-item"><div class="legend-dot" style="background:rgba(34,197,94,0.5);border:0.5px solid rgba(34,197,94,0.7)"></div>입구</div>
+  </div>
+</div>
+
+<div class="step-guide" id="stepGuide">
+  <div class="step-title">이동 안내</div>
+  <div class="steps" id="stepList"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  LAYOUT CONSTANTS
+//  Canvas: 960 × 680
+//  벽: 좌16, 우16, 상55, 하55
+//  통로 폭: 수직 28px, 수평 26px
+//
+//  평면도 구성 (좌→우, 위→아래):
+//   열(column) A  B  C  D  E  (각 서가 블록)
+//   수직통로  v0 v1 v2 v3 v4 v5 (벽+통로)
+//   행(row)  상단 / 하단
+//   수평통로  h0(상) h1(중앙 메인) h2(하)
+// ═══════════════════════════════════════════════════════
+const CW = 960, CH = 680;
+
+// 벽 경계
+const WL = 16, WR = CW - 16, WT = 55, WB = CH - 55;
+const FLOOR_W = WR - WL;
+const FLOOR_H = WB - WT;
+
+// ── 수직 통로 x 중심 (6개: 좌벽통로, 구역간 × 4, 우벽통로)
+// 서가 블록 5개를 5등분, 각 사이에 통로
+// 블록 폭 = (FLOOR_W - 6*28) / 5 = (928 - 168) / 5 = 152
+const BLK_W = 152;
+const V_AISLE_W = 28;
+// v0=16+14=30(좌벽 안쪽), v1~v4 서가 사이, v5=우벽 안쪽
+const VA = [
+  WL + 14,                          // 30  (좌벽)
+  WL + BLK_W + 14,                  // 182
+  WL + BLK_W*2 + V_AISLE_W + 14,   // 362  (← 2번째 블록 다음)
+  WL + BLK_W*3 + V_AISLE_W*2 + 14, // 542
+  WL + BLK_W*4 + V_AISLE_W*3 + 14, // 722
+  WR - 14,                          // 930  (우벽)
+];
+// 서가 블록 x 시작
+const BX = [
+  VA[0] + 14,   // 44
+  VA[1] + 14,   // 196
+  VA[2] + 14,   // 376
+  VA[3] + 14,   // 556
+  VA[4] + 14,   // 736
+];
+
+// ── 수평 통로 y 중심 (3개)
+// 상단 여유 + 상단 서가 블록 + 중앙 통로 + 하단 서가 블록 + 하단 여유
+const H_AISLE_H = 26;
+const TOP_MARGIN = 16;
+const BLK_H = Math.floor((FLOOR_H - H_AISLE_H*3 - TOP_MARGIN*2) / 2); // ≈ 232
+const HA = [
+  WT + TOP_MARGIN + Math.round(BLK_H * 0.30),          // 상단 서가 안쪽 (상단행 통로)
+  WT + TOP_MARGIN + BLK_H + H_AISLE_H,                  // 중앙 메인 통로
+  WT + TOP_MARGIN + BLK_H + H_AISLE_H + Math.round(BLK_H * 0.65), // 하단 서가 안쪽 (하단행 통로)
+];
+// 서가 행 y 시작 (상단/하단)
+const ROW_Y = [
+  WT + TOP_MARGIN,
+  WT + TOP_MARGIN + BLK_H + H_AISLE_H,
+];
+// 입구 y
+const ENT_Y = WB + 20;
+
+// ── 각 서가 블록 내 서가 배치 함수
+// 각 블록에 서가를 수직으로 나란히 배치 (등 맞대기)
+// n: 서가 수, bxi: 블록x인덱스(0~4), rowi: 행(0=상, 1=하)
+function makeShelvesInBlock(n, bxi, rowi) {
+  const bx = BX[bxi];
+  const by = ROW_Y[rowi];
+  const sw = 20;  // 서가 폭 (두께)
+  const gap = 10;  // 서가 사이 간격
+  const totalW = n * sw + (n-1) * gap;
+  const startX = bx + Math.round((BLK_W - totalW) / 2);
+  const sh = BLK_H - 8;
+  return Array.from({length: n}, (_, i) => ({
+    x: startX + i*(sw+gap),
+    y: by + 4,
+    w: sw,
+    h: sh,
+  }));
+}
+
+// ── KDC 10 구역 정의
+// aisleEntry: 해당 구역 서가 바로 옆 통로 지점 (경로 종점 직전)
+// 경로는 반드시 VA[] 또는 HA[] 위에서만 이동
+const SECTIONS = [
+  {
+    id:'S000', label:'000 총류',
+    color:'rgba(100,116,139,0.28)', stroke:'rgba(148,163,184,0.5)', textColor:'#94a3b8',
+    bxi:0, rowi:0, shelvesCnt:3,
+    // 접근: 좌벽 통로(VA[0])에서 상단 서가 옆
+  },
+  {
+    id:'S100', label:'100 철학·심리',
+    color:'rgba(139,92,246,0.25)', stroke:'rgba(167,139,250,0.5)', textColor:'#a78bfa',
+    bxi:0, rowi:1, shelvesCnt:3,
+  },
+  {
+    id:'S200', label:'200 종교',
+    color:'rgba(245,158,11,0.22)', stroke:'rgba(251,191,36,0.48)', textColor:'#fbbf24',
+    bxi:1, rowi:0, shelvesCnt:4,
+  },
+  {
+    id:'S300', label:'300 사회과학',
+    color:'rgba(59,130,246,0.22)', stroke:'rgba(96,165,250,0.48)', textColor:'#60a5fa',
+    bxi:1, rowi:1, shelvesCnt:5,
+  },
+  {
+    id:'S400', label:'400 자연과학',
+    color:'rgba(34,197,94,0.22)', stroke:'rgba(74,222,128,0.48)', textColor:'#4ade80',
+    bxi:2, rowi:0, shelvesCnt:4,
+  },
+  {
+    id:'S500', label:'500 기술과학',
+    color:'rgba(239,68,68,0.2)', stroke:'rgba(248,113,113,0.48)', textColor:'#f87171',
+    bxi:2, rowi:1, shelvesCnt:5,
+  },
+  {
+    id:'S600', label:'600 예술',
+    color:'rgba(236,72,153,0.2)', stroke:'rgba(244,114,182,0.48)', textColor:'#f472b6',
+    bxi:3, rowi:0, shelvesCnt:4,
+  },
+  {
+    id:'S700', label:'700 언어',
+    color:'rgba(6,182,212,0.22)', stroke:'rgba(34,211,238,0.48)', textColor:'#22d3ee',
+    bxi:3, rowi:1, shelvesCnt:3,
+  },
+  {
+    id:'S800', label:'800 문학',
+    color:'rgba(16,185,129,0.22)', stroke:'rgba(52,211,153,0.48)', textColor:'#34d399',
+    bxi:4, rowi:0, shelvesCnt:5,
+  },
+  {
+    id:'S900', label:'900 역사·지리',
+    color:'rgba(249,115,22,0.22)', stroke:'rgba(251,146,60,0.48)', textColor:'#fb923c',
+    bxi:4, rowi:1, shelvesCnt:4,
+  },
+];
+
+// 서가 좌표 미리 계산
+SECTIONS.forEach(sec => {
+  sec.shelves = makeShelvesInBlock(sec.shelvesCnt, sec.bxi, sec.rowi);
+});
+
+// ── 책 DB
+const BOOKS = [
+  { title:'한국민족문화대백과사전', author:'한국학중앙연구원', call:'031-한국학-한', section:'S000', shelfIdx:0, rowNum:2, desc:'총류·백과사전' },
+  { title:'데미안', author:'헤르만 헤세', call:'193-헤세-데', section:'S100', shelfIdx:1, rowNum:3, desc:'철학·문학' },
+  { title:'니코마코스 윤리학', author:'아리스토텔레스', call:'183-아리스-니', section:'S100', shelfIdx:0, rowNum:1, desc:'서양철학' },
+  { title:'논어', author:'공자', call:'223.1-공자-논', section:'S200', shelfIdx:2, rowNum:2, desc:'유교 경전' },
+  { title:'성경', author:'대한성서공회', call:'233-대한성-성', section:'S200', shelfIdx:0, rowNum:1, desc:'기독교' },
+  { title:'자본론', author:'카를 마르크스', call:'335.4-마르크-자', section:'S300', shelfIdx:1, rowNum:2, desc:'사회과학·경제학' },
+  { title:'파친코', author:'이민진', call:'301-이민진-파', section:'S300', shelfIdx:3, rowNum:4, desc:'사회과학' },
+  { title:'코스모스', author:'칼 세이건', call:'440-세이건-코', section:'S400', shelfIdx:0, rowNum:3, desc:'자연과학·천문학' },
+  { title:'수학의 정석', author:'홍성대', call:'410-홍성대-수', section:'S400', shelfIdx:2, rowNum:1, desc:'자연과학·수학' },
+  { title:'이기적 유전자', author:'리처드 도킨스', call:'476-도킨스-이', section:'S400', shelfIdx:1, rowNum:2, desc:'자연과학·생물학' },
+  { title:'클린 코드', author:'로버트 마틴', call:'005.1-마틴-클', section:'S500', shelfIdx:0, rowNum:2, desc:'기술과학·컴퓨터' },
+  { title:'건축을 묻다', author:'승효상', call:'610-승효상-건', section:'S600', shelfIdx:0, rowNum:2, desc:'예술·건축' },
+  { title:'미술의 역사', author:'E.H. 곰브리치', call:'609-곰브리치-미', section:'S600', shelfIdx:2, rowNum:3, desc:'예술사' },
+  { title:'한국어의 탄생', author:'최경봉', call:'710-최경봉-한', section:'S700', shelfIdx:0, rowNum:1, desc:'언어·국어학' },
+  { title:'채식주의자', author:'한강', call:'813.6-한강-채', section:'S800', shelfIdx:0, rowNum:2, desc:'한국문학·소설' },
+  { title:'82년생 김지영', author:'조남주', call:'813.6-조남주-팔', section:'S800', shelfIdx:2, rowNum:1, desc:'한국문학·소설' },
+  { title:'어린 왕자', author:'생텍쥐페리', call:'843-생텍쥐-어', section:'S800', shelfIdx:4, rowNum:3, desc:'프랑스문학' },
+  { title:'총균쇠', author:'재레드 다이아몬드', call:'901-다이아-총', section:'S900', shelfIdx:1, rowNum:2, desc:'역사·문명론' },
+  { title:'조선왕조실록', author:'조선왕조', call:'911.05-조선왕-조', section:'S900', shelfIdx:0, rowNum:1, desc:'한국사' },
+  { title:'사피엔스', author:'유발 하라리', call:'909-하라리-사', section:'S900', shelfIdx:3, rowNum:4, desc:'세계사' },
+];
+
+// ═══════════════════════════════════════════════════════
+//  PATH ROUTING  — 통로망(VA, HA)만 이동
+//
+//  알고리즘:
+//  1) 입구(x=CW/2, y=ENT_Y) → 하단벽 안쪽(y=WB)
+//  2) 가장 가까운 수직 통로(VA)로 이동
+//  3) 목표 구역 행에 따라 HA[1](중앙) or HA[0/2](내부) 이동
+//  4) 목표 서가 열의 VA로 이동 (통로 교차점)
+//  5) 서가 바로 앞 통로 지점까지 이동
+//  6) 서가 진입
+// ═══════════════════════════════════════════════════════
+function buildPath(secId, shelfIdx) {
+  const sec = SECTIONS.find(s => s.id === secId);
+  if(!sec) return [];
+
+  const shelf = sec.shelves[Math.min(shelfIdx, sec.shelves.length-1)];
+  const shelfCx = shelf.x + shelf.w / 2;
+  const shelfCy = shelf.y + shelf.h / 2;
+
+  // 서가 접근 방향: 서가 왼쪽 통로 또는 오른쪽 통로로 진입
+  // 서가가 수직이므로 좌우에서 접근 (서가 두께 w=20, 좌측에서)
+  // 접근 통로 x: 블록 왼쪽 VA (BXi 왼쪽) 또는 오른쪽 VA
+  const leftVA  = VA[sec.bxi];       // 블록 왼쪽 통로
+  const rightVA = VA[sec.bxi + 1];   // 블록 오른쪽 통로
+
+  // 서가 중심에 더 가까운 통로 선택
+  const useVA = Math.abs(shelfCx - leftVA) <= Math.abs(shelfCx - rightVA) ? leftVA : rightVA;
+
+  // 서가 행(row) 내 수평 통로
+  const useHA = sec.rowi === 0 ? HA[0] : HA[2];
+
+  // 서가 진입점: 통로에서 서가까지 (수평으로만 이동)
+  // 서가는 수직이므로 useVA에서 직접 접근
+  // 서가 진입 y는 서가 중앙
+  const entryX = useVA;
+  const entryY = shelfCy;
+
+  const pts = [];
+
+  // 1) 입구
+  pts.push({ x: CW/2, y: ENT_Y });
+  // 2) 하단 벽 안쪽 진입
+  pts.push({ x: CW/2, y: WB - 10 });
+  // 3) 중앙 메인 수평 통로로 이동
+  pts.push({ x: CW/2, y: HA[1] });
+  // 4) 목표 열의 수직 통로로 이동 (HA[1] 위)
+  pts.push({ x: useVA, y: HA[1] });
+  // 5) 서가 행 수평 통로로 이동
+  if(Math.abs(entryY - HA[1]) > 5) {
+    pts.push({ x: useVA, y: entryY });
+  }
+  // 6) 서가 중앙으로
+  pts.push({ x: shelfCx, y: shelfCy });
+
+  return pts;
+}
+
+// ═══════════════════════════════════════════════════════
+//  CANVAS RENDERING
+// ═══════════════════════════════════════════════════════
+const canvas = document.getElementById('mapCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = CW; canvas.height = CH;
+
+let currentBook = null;
+let pathPts = null;
+let pathAnim = 0;
+let animFrame = 0;
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y);
+  ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);
+  ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h);
+  ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r);
+  ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.closePath();
+}
+
+function drawBackground() {
+  ctx.fillStyle = '#0c1220';
+  ctx.fillRect(0, 0, CW, CH);
+  ctx.strokeStyle = 'rgba(99,179,237,0.035)';
+  ctx.lineWidth = 0.5;
+  for(let x=0; x<CW; x+=32){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,CH); ctx.stroke(); }
+  for(let y=0; y<CH; y+=32){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(CW,y); ctx.stroke(); }
+}
+
+function drawWalls() {
+  // 바닥 영역
+  ctx.fillStyle = 'rgba(15,25,45,0.7)';
+  roundRect(ctx, WL, WT, FLOOR_W, FLOOR_H, 8);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(99,179,237,0.18)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // 상단 타이틀바 (도면 헤더)
+  ctx.fillStyle = 'rgba(17,28,50,0.9)';
+  ctx.fillRect(WL, WT-32, FLOOR_W, 32);
+  ctx.strokeStyle = 'rgba(99,179,237,0.12)';
+  ctx.lineWidth = 0.5;
+  ctx.strokeRect(WL, WT-32, FLOOR_W, 32);
+
+  ctx.fillStyle = 'rgba(99,179,237,0.5)';
+  ctx.font = `500 10px 'IBM Plex Mono', monospace`;
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText('FLOOR PLAN  ·  1F  ·  SCALE 1:100', WL+12, WT-16);
+  ctx.textAlign = 'right';
+  ctx.fillText('KDC 한국십진분류법', WR-12, WT-16);
+  ctx.textBaseline = 'alphabetic';
+}
+
+function drawAisles() {
+  // 수평 통로 강조
+  [HA[0], HA[1], HA[2]].forEach((hy, i) => {
+    const isMain = i === 1;
+    ctx.fillStyle = isMain ? 'rgba(30,50,80,0.5)' : 'rgba(20,35,60,0.35)';
+    ctx.fillRect(WL+1, hy - H_AISLE_H/2, FLOOR_W-2, H_AISLE_H);
+    ctx.setLineDash([5,7]);
+    ctx.strokeStyle = isMain ? 'rgba(99,179,237,0.12)' : 'rgba(99,179,237,0.07)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(WL+4, hy); ctx.lineTo(WR-4, hy); ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  // 수직 통로 강조
+  VA.forEach((vx, i) => {
+    if(i===0 || i===VA.length-1) return; // 벽 제외
+    ctx.fillStyle = 'rgba(20,35,60,0.4)';
+    ctx.fillRect(vx - V_AISLE_W/2, WT+1, V_AISLE_W, FLOOR_H-2);
+    ctx.setLineDash([5,7]);
+    ctx.strokeStyle = 'rgba(99,179,237,0.07)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(vx, WT+4); ctx.lineTo(vx, WB-4); ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  // 통로 라벨 (하단에 작게)
+  ctx.fillStyle = 'rgba(99,179,237,0.2)';
+  ctx.font = `7px 'IBM Plex Mono', monospace`;
+  ctx.textAlign = 'center';
+  VA.slice(1,-1).forEach((vx,i) => {
+    ctx.fillText(`T${i+1}`, vx, WB+10);
+  });
+}
+
+function drawSections() {
+  SECTIONS.forEach(sec => {
+    const isTarget = currentBook && currentBook.section === sec.id;
+    const shelves = sec.shelves;
+
+    // 구역 배경 박스
+    const xs = shelves.map(s=>s.x), ys = shelves.map(s=>s.y);
+    const x2 = shelves.map(s=>s.x+s.w), y2 = shelves.map(s=>s.y+s.h);
+    const bx = Math.min(...xs)-10, by = Math.min(...ys)-20;
+    const bw = Math.max(...x2)-Math.min(...xs)+20, bh = Math.max(...y2)-Math.min(...ys)+28;
+
+    ctx.fillStyle = sec.color;
+    ctx.strokeStyle = isTarget ? sec.stroke.replace(/[\d.]+\)$/,'0.9)') : sec.stroke;
+    ctx.lineWidth = isTarget ? 1.2 : 0.5;
+    roundRect(ctx, bx, by, bw, bh, 5);
+    ctx.fill(); ctx.stroke();
+
+    // 구역 라벨
+    ctx.fillStyle = isTarget ? sec.textColor : sec.textColor.replace(/,\s*[\d.]+\)/, ',0.6)').replace('#','rgba(').replace(/^rgba\(([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2}),/i, (m,r,g,b) => `rgba(${parseInt(r,16)},${parseInt(g,16)},${parseInt(b,16)},`);
+    ctx.fillStyle = isTarget ? sec.textColor : '#546380';
+    ctx.font = `500 9px 'IBM Plex Sans KR', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(sec.label, bx + bw/2, by + 13);
+
+    // 서가 그리기
+    shelves.forEach((shelf, si) => {
+      const isTargetShelf = isTarget && currentBook.shelfIdx === si;
+
+      ctx.shadowBlur = isTargetShelf ? 14 : 0;
+      ctx.shadowColor = '#3b82f6';
+      ctx.fillStyle = isTargetShelf ? 'rgba(59,130,246,0.55)' : '#253448';
+      ctx.strokeStyle = isTargetShelf ? '#3b82f6' : 'rgba(99,179,237,0.2)';
+      ctx.lineWidth = isTargetShelf ? 1.5 : 0.5;
+      roundRect(ctx, shelf.x, shelf.y, shelf.w, shelf.h, 2);
+      ctx.fill(); ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // 책 등 텍스처 (수평선)
+      const n = 9;
+      const spacing = (shelf.h - 4) / n;
+      for(let b=0; b<n; b++) {
+        ctx.fillStyle = isTargetShelf
+          ? `rgba(255,255,255,${0.05+b*0.012})`
+          : `rgba(99,179,237,${0.025+b*0.007})`;
+        ctx.fillRect(shelf.x+2, shelf.y+2+b*spacing, shelf.w-4, spacing-0.5);
+      }
+
+      // 서가 번호
+      ctx.fillStyle = isTargetShelf ? '#93c5fd' : 'rgba(99,179,237,0.22)';
+      ctx.font = `7px 'IBM Plex Mono', monospace`;
+      ctx.textAlign = 'center';
+      ctx.fillText(si+1, shelf.x+shelf.w/2, shelf.y-3);
+    });
+  });
+}
+
+function drawFacilities() {
+  // 안내 데스크 (중앙 하단)
+  ctx.fillStyle = 'rgba(99,179,237,0.1)';
+  ctx.strokeStyle = 'rgba(99,179,237,0.35)';
+  ctx.lineWidth = 0.5;
+  roundRect(ctx, CW/2-45, WB-44, 90, 30, 5);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgba(99,179,237,0.6)';
+  ctx.font = `500 9px 'IBM Plex Sans KR', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('안내 데스크', CW/2, WB-25);
+
+  // 좌우 계단/엘리베이터
+  [WL+40, WR-40].forEach((ex, i) => {
+    ctx.fillStyle = 'rgba(99,179,237,0.08)';
+    ctx.strokeStyle = 'rgba(99,179,237,0.25)';
+    ctx.lineWidth = 0.5;
+    roundRect(ctx, ex-24, WB-44, 48, 30, 4);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(99,179,237,0.4)';
+    ctx.font = `8px 'IBM Plex Sans KR', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(i===0 ? '계단' : '엘리베이터', ex, WB-25);
+  });
+
+  // 열람실 (상단 왼쪽, 오른쪽)
+  [[WL+10, WT+2, 60, 40], [WR-70, WT+2, 60, 40]].forEach(([x,y,w,h]) => {
+    ctx.fillStyle = 'rgba(99,179,237,0.06)';
+    ctx.strokeStyle = 'rgba(99,179,237,0.18)';
+    ctx.lineWidth = 0.5;
+    roundRect(ctx, x, y, w, h, 4);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(99,179,237,0.35)';
+    ctx.font = `8px 'IBM Plex Sans KR', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('열람석', x+w/2, y+h/2+3);
+  });
+}
+
+function drawEntrance() {
+  const ex = CW/2, ey = WB;
+
+  // 입구 게이트
+  ctx.fillStyle = 'rgba(34,197,94,0.12)';
+  ctx.strokeStyle = 'rgba(34,197,94,0.55)';
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, ex-55, ey+2, 110, 26, 4);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgba(34,197,94,0.85)';
+  ctx.font = `500 11px 'IBM Plex Sans KR', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('▲ 입구 / 출구', ex, ey+19);
+
+  // 현재 위치 마커
+  const my = ey - 22;
+  ctx.save();
+  ctx.shadowColor = 'rgba(168,85,247,0.95)';
+  ctx.shadowBlur = 18;
+  ctx.fillStyle = 'rgba(168,85,247,0.92)';
+  ctx.beginPath(); ctx.arc(ex, my, 8, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = 'white';
+  ctx.font = 'bold 9px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('나', ex, my);
+  ctx.restore();
+  ctx.textBaseline = 'alphabetic';
+}
+
+function drawPath(pts, progress) {
+  if(!pts || pts.length < 2 || progress <= 0) return;
+
+  const totalSegs = pts.length - 1;
+  const totalProg = progress * totalSegs;
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  for(let i=0; i<totalSegs; i++) {
+    const segProg = Math.min(1, Math.max(0, totalProg - i));
+    if(segProg <= 0) break;
+    const p0 = pts[i], p1 = pts[i+1];
+    const ex = p0.x + (p1.x-p0.x)*segProg;
+    const ey = p0.y + (p1.y-p0.y)*segProg;
+
+    // 외곽 발광
+    ctx.shadowColor = '#3b82f6'; ctx.shadowBlur = 20;
+    ctx.strokeStyle = 'rgba(59,130,246,0.2)'; ctx.lineWidth = 14;
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(p0.x,p0.y); ctx.lineTo(ex,ey); ctx.stroke();
+
+    // 점선 외곽
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(59,130,246,0.4)'; ctx.lineWidth = 6;
+    ctx.setLineDash([9,7]);
+    ctx.beginPath(); ctx.moveTo(p0.x,p0.y); ctx.lineTo(ex,ey); ctx.stroke();
+
+    // 중심선
+    ctx.shadowColor = '#93c5fd'; ctx.shadowBlur = 8;
+    ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 2.5;
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(p0.x,p0.y); ctx.lineTo(ex,ey); ctx.stroke();
+  }
+
+  ctx.setLineDash([]); ctx.shadowBlur = 0;
+
+  // 이동 도트
+  const lf = Math.min(Math.floor(totalProg), totalSegs-1);
+  const rp = totalProg - lf;
+  const dp0 = pts[lf], dp1 = pts[Math.min(lf+1, totalSegs)];
+  const dotX = dp0.x + (dp1.x-dp0.x)*rp;
+  const dotY = dp0.y + (dp1.y-dp0.y)*rp;
+
+  const pulse = 0.5 + 0.5*Math.sin(animFrame*0.1);
+  ctx.strokeStyle = `rgba(59,130,246,${0.22*pulse})`;
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(dotX, dotY, 11+pulse*5, 0, Math.PI*2); ctx.stroke();
+
+  ctx.save();
+  ctx.shadowColor='#60a5fa'; ctx.shadowBlur=20;
+  ctx.fillStyle='#93c5fd';
+  ctx.beginPath(); ctx.arc(dotX, dotY, 6, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle='white';
+  ctx.beginPath(); ctx.arc(dotX, dotY, 2.5, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+function drawCompass() {
+  ctx.fillStyle = 'rgba(99,179,237,0.3)';
+  ctx.font = `9px 'IBM Plex Mono', monospace`;
+  ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+  ctx.fillText('N↑', WR-8, WT+4);
+  ctx.textBaseline = 'alphabetic';
+}
+
+function render() {
+  ctx.clearRect(0,0,CW,CH);
+  drawBackground();
+  drawWalls();
+  drawAisles();
+  drawSections();
+  drawFacilities();
+  drawEntrance();
+  drawCompass();
+  if(pathPts && pathAnim < 1) pathAnim = Math.min(1, pathAnim+0.008);
+  drawPath(pathPts, pathAnim);
+  animFrame++;
+  requestAnimationFrame(render);
+}
+
+// ═══════════════════════════════════════════════════════
+//  SEARCH LOGIC
+// ═══════════════════════════════════════════════════════
+function findBook(q) {
+  const lq = q.trim().toLowerCase();
+  return BOOKS.find(b =>
+    b.title.toLowerCase().includes(lq) ||
+    (b.call && b.call.toLowerCase().includes(lq)) ||
+    (b.author && b.author.toLowerCase().includes(lq))
+  );
+}
+
+function doSearch() {
+  const q = document.getElementById('searchInput').value;
+  if(!q.trim()) return;
+  const book = findBook(q);
+
+  ['resultCard','notFound','stepGuide'].forEach(id => document.getElementById(id).classList.remove('visible'));
+
+  if(!book) {
+    document.getElementById('notFound').classList.add('visible');
+    currentBook = null; pathPts = null; return;
+  }
+
+  currentBook = book;
+  pathAnim = 0;
+  pathPts = buildPath(book.section, book.shelfIdx);
+
+  const sec = SECTIONS.find(s => s.id === book.section);
+  document.getElementById('resultTitle').textContent = book.title + (book.author ? ' — '+book.author : '');
+  document.getElementById('resultMeta').textContent = book.desc || '';
+  document.getElementById('tagCall').textContent = book.call;
+  document.getElementById('tagFloor').textContent = sec ? sec.label : '';
+  document.getElementById('tagShelf').textContent = (book.shelfIdx+1)+'번 서가';
+  document.getElementById('tagRow').textContent = book.rowNum+'번째 칸';
+  document.getElementById('resultCard').classList.add('visible');
+
+  const sl = document.getElementById('stepList');
+  sl.innerHTML = '';
+  const steps = [
+    '입구에서 출발합니다',
+    '중앙 메인 통로를 따라 이동',
+    `${sec ? sec.label : ''} 구역 방향으로 이동`,
+    `${(book.shelfIdx+1)}번 서가 앞 통로 진입`,
+    `위에서 ${book.rowNum}번째 칸 · 청구번호: ${book.call}`,
+  ];
+  steps.forEach((text, i) => {
+    const d = document.createElement('div');
+    d.className = 'step' + (i===steps.length-1?' highlight':'');
+    d.style.animationDelay = (i*0.07)+'s';
+    d.innerHTML = `<div class="step-num">${i+1}</div><div>${text}</div>`;
+    sl.appendChild(d);
+  });
+  document.getElementById('stepGuide').classList.add('visible');
+}
+
+function fillSearch(v) {
+  document.getElementById('searchInput').value = v;
+  doSearch();
+}
+
+function resetView() {
+  currentBook = null; pathPts = null; pathAnim = 0;
+  ['resultCard','notFound','stepGuide'].forEach(id => document.getElementById(id).classList.remove('visible'));
+  document.getElementById('searchInput').value = '';
+}
+
+document.getElementById('searchInput').addEventListener('keydown', e => { if(e.key==='Enter') doSearch(); });
+
+render();
+</script>
+</body>
+</html>
